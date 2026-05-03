@@ -74,13 +74,13 @@ Used for session history storage and PDF index caching.
 # MODEL NAMES
 # ---------------------------------------------------------------------------
 
-EMBEDDING_MODEL: str = "models/text-embedding-004"
+EMBEDDING_MODEL: str = "models/gemini-embedding-2"
 """
 Primary embedding model (Gemini). Free tier, 768-dimensional output.
 Chosen over OpenAI ada-002 (paid) and older Gemini models (lower quality).
 """
 
-GENERATION_MODEL: str = "gemini-1.5-flash"
+GENERATION_MODEL: str = "gemini-2.5-flash"
 """
 Generation model. 1M context window, free tier, fast streaming.
 Alternative considered: gemini-1.5-pro (higher quality but slower, lower free quota).
@@ -168,20 +168,25 @@ Higher k dampens the influence of top-ranked results; lower k amplifies it.
 k=60 provides robust performance across query types without per-dataset tuning.
 """
 
-SIMILARITY_THRESHOLD_GEMINI: float = 0.5
+SIMILARITY_THRESHOLD_GEMINI: float = 0.4
 """
 Minimum FAISS cosine similarity score to proceed with retrieval (Gemini embeddings).
 
 If the top FAISS result scores below this, we refuse without calling the LLM.
 This is Anti-Hallucination Layer 1 — see architecture overview in app.py.
 
-0.5 calibrated against Gemini text-embedding-004 score distribution:
-  < 0.3 = unrelated
-  0.3-0.5 = loosely related (often still off-topic)
-  > 0.5 = genuinely relevant
+Calibrated against gemini-embedding-2 score distribution:
+  < 0.25 = unrelated
+  0.25-0.4 = loosely / indirectly related (may be semantically adjacent)
+  > 0.4 = genuinely relevant
 
-This is a tunable hyperparameter. Increase to reduce false-positives (tighter
-refusal), decrease to allow more borderline retrievals through.
+Previously 0.5 — lowered to 0.4 to reduce False Negatives on queries where the
+user's phrasing is semantically adjacent to the document content (e.g. asking about
+'renewable energy and air pollution' when the doc discusses fossil fuels causing
+air pollution and renewable energy minimising it).
+
+This is a tunable hyperparameter. Increase to tighten refusals, decrease to allow
+more borderline retrievals through.
 """
 
 SIMILARITY_THRESHOLD_FALLBACK: float = 0.35

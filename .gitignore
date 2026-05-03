@@ -54,3 +54,6 @@ desktop.ini
 # === Temporary files ===
 *.tmp
 *.bak
+
+# === Developer notes (local only, not for repo) ===
+devnote.md

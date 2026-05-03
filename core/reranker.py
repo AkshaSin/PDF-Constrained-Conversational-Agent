@@ -23,7 +23,7 @@ Design decisions:
 
 from typing import List, Tuple
 
-from sentence_transformers import CrossEncoder
+
 
 from config import RERANKER_MODEL, TOP_K_RERANK
 from core.chunker import Chunk
@@ -39,10 +39,14 @@ class CrossEncoderReranker:
 
     def __init__(self) -> None:
         """Initialise the reranker and load the model into memory."""
-        log.info(f"Loading Cross-Encoder model: {RERANKER_MODEL}")
-        # Loads the model locally. Will download on first run and cache in ~/.cache/huggingface
-        self.model = CrossEncoder(RERANKER_MODEL, max_length=512)
-        log.info("Cross-Encoder loaded successfully.")
+        self.model = None
+        try:
+            from sentence_transformers import CrossEncoder
+            log.info(f"Loading Cross-Encoder model: {RERANKER_MODEL}")
+            self.model = CrossEncoder(RERANKER_MODEL, max_length=512)
+            log.info("Cross-Encoder loaded successfully.")
+        except (ImportError, OSError) as e:
+            log.warning(f"PyTorch/C++ Redistributables missing ({e.__class__.__name__}). Reranker disabled. Using Hybrid Retriever results directly.")
 
     def rerank(self, query: str, chunks: List[Chunk]) -> List[Chunk]:
         """
@@ -58,6 +62,11 @@ class CrossEncoderReranker:
         if not chunks:
             log.warning("Reranker received empty chunk list.")
             return []
+
+        if self.model is None:
+            # Passthrough if reranker is disabled
+            log.debug("Reranker disabled, returning Top K chunks from Hybrid Retriever.")
+            return chunks[:TOP_K_RERANK]
 
         # The Cross-Encoder expects input as a list of pairs: [[query, text1], [query, text2], ...]
         model_inputs = [[query, chunk.text] for chunk in chunks]

@@ -91,7 +91,7 @@ def process_pdf(pdf_filepath: str) -> str:
 
 def chat_inference(
     user_message: str, 
-    chat_history: List[Tuple[str, str]], 
+    chat_history: List[dict], 
     session_id: str
 ):
     """
@@ -105,7 +105,8 @@ def chat_inference(
     memory = SessionMemory(session_id)
     
     # 1. Update UI immediately with the user's message and a blank assistant response
-    chat_history.append((user_message, ""))
+    chat_history.append({"role": "user", "content": user_message})
+    chat_history.append({"role": "assistant", "content": ""})
     yield chat_history
     
     # 2. Retrieve Conversation Context from Redis
@@ -129,7 +130,7 @@ def chat_inference(
     for chunk_text in response_stream:
         partial_response += chunk_text
         # Update the blank assistant response with the new chunk
-        chat_history[-1] = (user_message, partial_response)
+        chat_history[-1]["content"] = partial_response
         yield chat_history
         
     # 6. Save Turn to Memory (Post-Generation)
@@ -141,7 +142,7 @@ def chat_inference(
 # Gradio UI Layout
 # =====================================================================
 
-with gr.Blocks(title="PDF-Constrained Agent", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="PDF-Constrained Agent") as demo:
     # A hidden state variable to hold the unique Session ID for this browser tab
     session_id_state = gr.State(lambda: str(uuid.uuid4()))
     
@@ -160,6 +161,8 @@ with gr.Blocks(title="PDF-Constrained Agent", theme=gr.themes.Soft()) as demo:
             
         with gr.Column(scale=3):
             # Right panel: Chat interface
+            # Gradio 6+ removed the `type` parameter entirely — messages dict format
+            # {"role": "user"/"assistant", "content": "..."} is now the only format.
             chatbot = gr.Chatbot(label="Conversation", height=600)
             msg_input = gr.Textbox(
                 label="Ask a question about the document",
@@ -205,6 +208,7 @@ with gr.Blocks(title="PDF-Constrained Agent", theme=gr.themes.Soft()) as demo:
 # Standard Python execution guard
 if __name__ == "__main__":
     log.info("Starting Gradio server...")
-    # launch() starts the local web server. 
+    # launch() starts the local web server.
+    # theme is passed here as per Gradio 6.0+ API.
     # share=False keeps it local. Set True to generate a public link.
-    demo.launch(server_name="127.0.0.1", server_port=7860, share=False)
+    demo.launch(server_name="127.0.0.1", share=False, theme=gr.themes.Soft())

@@ -22,7 +22,7 @@ from typing import List, Dict, Generator
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
 
-from config import GENERATION_MODEL
+from config import GENERATION_MODEL, GEMINI_API_KEY
 from core.chunker import Chunk
 from utils.logger import get_logger
 
@@ -52,8 +52,8 @@ class LLMGenerator:
     def __init__(self) -> None:
         """Initialise the generation model."""
         log.info(f"Initialising generator with model: {GENERATION_MODEL}")
-        # We assume genai.configure() was already called by the Embedder,
-        # but the API handles redundant calls safely.
+        # Explicitly configure with the key loaded from the environment
+        genai.configure(api_key=GEMINI_API_KEY)
         
         # Configure generation parameters to minimise hallucination
         # temperature=0.1 means the model will be highly deterministic and

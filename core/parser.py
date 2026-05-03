@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+import io
 from typing import List
 
-import fitz  # PyMuPDF
+from pypdf import PdfReader
 
 from config import HEADER_FOOTER_FREQ_THRESHOLD, HEADER_FOOTER_MIN_PAGES
 from utils.logger import get_logger
@@ -54,17 +55,16 @@ class PDFParser:
             file_bytes: The raw binary content of the PDF file.
         """
         self.file_bytes = file_bytes
-        self.doc = fitz.open(stream=file_bytes, filetype="pdf")
-        self.num_pages = len(self.doc)
-        log.info(f"Loaded PDF with {self.num_pages} pages.")
+        self.doc = PdfReader(io.BytesIO(file_bytes))
+        self.num_pages = len(self.doc.pages)
+        log.info(f"Loaded PDF with {self.num_pages} pages using pypdf.")
 
     def _extract_raw_pages(self) -> List[str]:
         """Extract raw text from each page."""
         pages = []
-        for i in range(self.num_pages):
-            page = self.doc[i]
-            # get_text("text") returns text ordered roughly by human reading order
-            pages.append(page.get_text("text"))
+        for page in self.doc.pages:
+            text = page.extract_text() or ""
+            pages.append(text)
         return pages
 
     def _find_headers_and_footers(self, pages: List[str]) -> set[str]:
@@ -159,5 +159,4 @@ class PDFParser:
             log.error(f"Failed to parse PDF: {str(e)}")
             raise
         finally:
-            # Always close the PyMuPDF document to free C-level memory
-            self.doc.close()
+            pass # pypdf doesn't require explicit closing of BytesIO streams

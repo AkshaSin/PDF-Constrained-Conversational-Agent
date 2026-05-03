@@ -30,9 +30,9 @@ import numpy as np
 import google.generativeai as genai
 from google.api_core.exceptions import GoogleAPIError
 
-from sentence_transformers import SentenceTransformer
 
-from config import EMBEDDING_MODEL, FALLBACK_EMBEDDING_MODEL
+
+from config import EMBEDDING_MODEL, FALLBACK_EMBEDDING_MODEL, GEMINI_API_KEY
 from core.chunker import Chunk
 from utils.logger import get_logger
 
@@ -47,8 +47,8 @@ class FAISSEmbedder:
     def __init__(self) -> None:
         """Initialise embedder and prepare models."""
         # Initialize Gemini
-        # It assumes GEMINI_API_KEY is loaded in the environment via config.py
-        genai.configure()
+        # We explicitly configure with the key loaded from the environment
+        genai.configure(api_key=GEMINI_API_KEY)
         
         self.primary_model = EMBEDDING_MODEL
         
@@ -63,11 +63,16 @@ class FAISSEmbedder:
         # We don't know the dimension until we embed the first chunk
         self.dimension = 0
 
-    def _get_fallback_model(self) -> SentenceTransformer:
+    def _get_fallback_model(self):
         """Lazy load the local sentence-transformer model."""
         if self._fallback_model is None:
-            log.info(f"Loading local fallback model: {FALLBACK_EMBEDDING_MODEL}")
-            self._fallback_model = SentenceTransformer(FALLBACK_EMBEDDING_MODEL)
+            try:
+                from sentence_transformers import SentenceTransformer
+                log.info(f"Loading local fallback model: {FALLBACK_EMBEDDING_MODEL}")
+                self._fallback_model = SentenceTransformer(FALLBACK_EMBEDDING_MODEL)
+            except (ImportError, OSError) as e:
+                log.error(f"Failed to load local fallback model ({e.__class__.__name__}). Ensure PyTorch and C++ redistributables are installed.")
+                raise RuntimeError("Fallback model unavailable") from e
         return self._fallback_model
 
     def _embed_batch(self, texts: List[str]) -> np.ndarray:
