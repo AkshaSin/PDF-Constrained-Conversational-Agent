@@ -25,10 +25,11 @@ Design decisions:
 
 from typing import List, Tuple, Dict, Any, Optional
 import os
+import pickle
 import faiss
 import numpy as np
-import google.generativeai as genai
-from google.api_core.exceptions import GoogleAPIError
+from google import genai
+from google.genai import types
 
 
 
@@ -46,9 +47,8 @@ class FAISSEmbedder:
 
     def __init__(self) -> None:
         """Initialise embedder and prepare models."""
-        # Initialize Gemini
-        # We explicitly configure with the key loaded from the environment
-        genai.configure(api_key=GEMINI_API_KEY)
+        # Initialize Gemini with the new genai SDK
+        self.client = genai.Client(api_key=GEMINI_API_KEY)
         
         self.primary_model = EMBEDDING_MODEL
         
@@ -89,14 +89,14 @@ class FAISSEmbedder:
                 
             log.debug(f"Calling Gemini API to embed {len(texts)} chunks...")
             # Gemini expects 'models/...' prefix for embeddings
-            result = genai.embed_content(
+            response = self.client.models.embed_content(
                 model=self.primary_model,
-                content=texts,
-                task_type="retrieval_document"
+                contents=texts,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
             )
-            embeddings = np.array(result['embedding'], dtype=np.float32)
+            embeddings = np.array([e.values for e in response.embeddings], dtype=np.float32)
             
-        except (GoogleAPIError, RuntimeError, Exception) as e:
+        except (RuntimeError, Exception) as e:
             if not self.using_fallback:
                 log.warning(f"Gemini embedding failed: {str(e)}. Switching to local fallback.")
                 self.using_fallback = True
@@ -156,12 +156,12 @@ class FAISSEmbedder:
                 model = self._get_fallback_model()
                 q_emb = np.array(model.encode([query]), dtype=np.float32)
             else:
-                result = genai.embed_content(
+                response = self.client.models.embed_content(
                     model=self.primary_model,
-                    content=[query],
-                    task_type="retrieval_query" # Note the specific task type
+                    contents=[query],
+                    config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
                 )
-                q_emb = np.array(result['embedding'], dtype=np.float32)
+                q_emb = np.array([e.values for e in response.embeddings], dtype=np.float32)
         except Exception as e:
             # If query fails, we must fallback, but query embedding must use the 
             # SAME model as the document embeddings, or spaces won't match!
@@ -184,3 +184,33 @@ class FAISSEmbedder:
                 results.append((self.chunks_map[idx], float(score)))
 
         return results
+
+    def save_index(self, index_path: str, map_path: str) -> None:
+        """Persist the FAISS index and chunk metadata to disk."""
+        if self.index is None:
+            log.warning("No index to save.")
+            return
+            
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(index_path), exist_ok=True)
+        
+        faiss.write_index(self.index, index_path)
+        with open(map_path, 'wb') as f:
+            pickle.dump(self.chunks_map, f)
+        log.info(f"FAISS index and metadata saved to {index_path} and {map_path}.")
+
+    def load_index(self, index_path: str, map_path: str) -> bool:
+        """Load the FAISS index and chunk metadata from disk if available."""
+        if os.path.exists(index_path) and os.path.exists(map_path):
+            try:
+                self.index = faiss.read_index(index_path)
+                with open(map_path, 'rb') as f:
+                    self.chunks_map = pickle.load(f)
+                self.dimension = self.index.d
+                log.info(f"Loaded FAISS index with {self.index.ntotal} vectors from disk.")
+                return True
+            except Exception as e:
+                log.error(f"Failed to load FAISS index from disk: {e}")
+                self.index = None
+                self.chunks_map = {}
+        return False

@@ -22,6 +22,8 @@ Design decisions:
 """
 
 import re
+import os
+import pickle
 from typing import List, Tuple
 
 from rank_bm25 import BM25Okapi
@@ -96,3 +98,31 @@ class BM25Retriever:
         # Sort by score descending and take top_k
         results.sort(key=lambda x: x[1], reverse=True)
         return results[:top_k]
+
+    def save_index(self, index_path: str) -> None:
+        """Persist the BM25 index and chunks to disk."""
+        if self.bm25 is None or not self.chunks:
+            log.warning("No BM25 index to save.")
+            return
+            
+        os.makedirs(os.path.dirname(index_path), exist_ok=True)
+        
+        with open(index_path, 'wb') as f:
+            pickle.dump({'bm25': self.bm25, 'chunks': self.chunks}, f)
+        log.info(f"BM25 index saved to {index_path}.")
+
+    def load_index(self, index_path: str) -> bool:
+        """Load the BM25 index and chunks from disk if available."""
+        if os.path.exists(index_path):
+            try:
+                with open(index_path, 'rb') as f:
+                    data = pickle.load(f)
+                    self.bm25 = data['bm25']
+                    self.chunks = data['chunks']
+                log.info(f"Loaded BM25 index with {len(self.chunks)} chunks from disk.")
+                return True
+            except Exception as e:
+                log.error(f"Failed to load BM25 index from disk: {e}")
+                self.bm25 = None
+                self.chunks = []
+        return False

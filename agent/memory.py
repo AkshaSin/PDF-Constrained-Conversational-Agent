@@ -26,7 +26,9 @@ from typing import List, Dict
 
 import redis
 
-from config import REDIS_URL, MAX_HISTORY_MESSAGES, REDIS_SESSION_TTL
+from google import genai
+
+from config import REDIS_URL, MAX_HISTORY_MESSAGES, REDIS_SESSION_TTL, GEMINI_API_KEY, GENERATION_MODEL
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -83,12 +85,19 @@ class SessionMemory:
             history.append({"role": "user", "content": user_message})
             history.append({"role": "assistant", "content": assistant_message})
             
-            # 3. Truncate to sliding window limit (MAX_HISTORY_MESSAGES)
-            # Example: If limit is 10, we slice the list to keep only the last 10 items
+            # 3. Truncate to sliding window limit (MAX_HISTORY_MESSAGES) and summarize overflow
             if len(history) > MAX_HISTORY_MESSAGES:
-                # Keep the last MAX_HISTORY_MESSAGES elements
-                history = history[-MAX_HISTORY_MESSAGES:]
-                log.debug(f"Truncated history for session {self.session_id} to {MAX_HISTORY_MESSAGES} messages.")
+                overflow_messages = history[:-MAX_HISTORY_MESSAGES]
+                recent_messages = history[-MAX_HISTORY_MESSAGES:]
+                
+                text_to_summarize = ""
+                for msg in overflow_messages:
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    text_to_summarize += f"{role}: {msg['content']}\n"
+                    
+                summary = self._summarize(text_to_summarize)
+                history = [{"role": "assistant", "content": f"[SYSTEM_SUMMARY: {summary}]"}] + recent_messages
+                log.debug(f"Summarised older history for session {self.session_id}.")
             
             # 4. Save back to Redis with a TTL (Time To Live)
             # ex=REDIS_SESSION_TTL means "delete this key automatically if it's not updated for X seconds"
@@ -112,3 +121,17 @@ class SessionMemory:
             log.info(f"Cleared memory for session: {self.session_id}")
         except redis.RedisError as e:
             log.error(f"Redis delete failed for session {self.session_id}: {str(e)}")
+
+    def _summarize(self, text_to_summarize: str) -> str:
+        """Use Gemini to summarize the overflow conversation history."""
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            prompt = f"Summarize the following conversation history concisely in 1-2 sentences. Focus on the main topics discussed:\n\n{text_to_summarize}"
+            response = client.models.generate_content(
+                model=GENERATION_MODEL,
+                contents=prompt,
+            )
+            return response.text
+        except Exception as e:
+            log.error(f"Failed to summarize history: {e}")
+            return "Previous conversation summary unavailable."

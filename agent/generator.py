@@ -19,8 +19,8 @@ Key responsibilities:
 
 from typing import List, Dict, Generator
 
-import google.generativeai as genai
-from google.generativeai.types import GenerationConfig
+from google import genai
+from google.genai import types
 
 from config import GENERATION_MODEL, GEMINI_API_KEY
 from core.chunker import Chunk
@@ -38,6 +38,7 @@ CRITICAL RULES:
 2. If the answer cannot be found in the <context>, you MUST state exactly: "I cannot answer that based on the provided document." Do not attempt to guess or use outside knowledge.
 3. Do not mention that you are reading from "context tags" or "chunks" — simply answer the question naturally.
 4. If the user is making small talk (e.g., "hello", "how are you"), you may answer politely, but gently guide them back to asking about the document.
+5. When using information from an excerpt, you MUST append a citation to the end of your answer (or end of the relevant sentence), formatted exactly as `[Source: Page X]`, based on the "Page" label provided in the excerpt header.
 
 <context>
 {context_text}
@@ -53,20 +54,15 @@ class LLMGenerator:
         """Initialise the generation model."""
         log.info(f"Initialising generator with model: {GENERATION_MODEL}")
         # Explicitly configure with the key loaded from the environment
-        genai.configure(api_key=GEMINI_API_KEY)
+        self.client = genai.Client(api_key=GEMINI_API_KEY)
         
         # Configure generation parameters to minimise hallucination
         # temperature=0.1 means the model will be highly deterministic and
         # less likely to "creatively" invent facts.
-        self.config = GenerationConfig(
+        self.config = types.GenerateContentConfig(
             temperature=0.1,
             top_p=0.8,
         )
-        
-        # Instantiate the model. We use system_instruction to enforce the core rules.
-        # (Note: we will update the system_instruction dynamically per request
-        # because the {context_text} changes for every question).
-        self.model = genai.GenerativeModel(GENERATION_MODEL)
         log.debug("Generator initialised successfully.")
 
     def _format_context(self, chunks: List[Chunk]) -> str:
@@ -78,8 +74,8 @@ class LLMGenerator:
             
         formatted_chunks = []
         for i, chunk in enumerate(chunks, 1):
-            # We add a source ID so the LLM can differentiate distinct passages
-            formatted_chunks.append(f"--- Excerpt {i} ---\n{chunk.text}\n")
+            # We add a source ID and page number so the LLM can cite it
+            formatted_chunks.append(f"--- Excerpt {i} (Page {chunk.page_number}) ---\n{chunk.text}\n")
             
         return "\n".join(formatted_chunks)
 
@@ -125,13 +121,13 @@ class LLMGenerator:
         
         try:
             # Generate response as a stream
-            response = self.model.generate_content(
-                final_prompt,
-                generation_config=self.config,
-                stream=True
+            response_stream = self.client.models.generate_content_stream(
+                model=GENERATION_MODEL,
+                contents=final_prompt,
+                config=self.config
             )
             
-            for chunk in response:
+            for chunk in response_stream:
                 if chunk.text:
                     yield chunk.text
                     

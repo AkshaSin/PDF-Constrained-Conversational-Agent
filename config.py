@@ -69,6 +69,17 @@ Redis connection URL. Format: redis://default:<password>@<host>:<port>
 Used for session history storage and PDF index caching.
 """
 
+# ---------------------------------------------------------------------------
+# PERSISTENCE CONFIGURATION
+# ---------------------------------------------------------------------------
+
+INDEX_DIR: str = os.getenv("INDEX_DIR", "./index").strip()
+"""
+Directory to store the persistent FAISS and BM25 index files.
+Defaults to './index' in the current working directory.
+"""
+
+
 
 # ---------------------------------------------------------------------------
 # MODEL NAMES
@@ -86,18 +97,20 @@ Generation model. 1M context window, free tier, fast streaming.
 Alternative considered: gemini-1.5-pro (higher quality but slower, lower free quota).
 """
 
-RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+RERANKER_MODEL: str = "BAAI/bge-reranker-m3"
 """
-Cross-encoder reranker. Runs locally (no API calls, no cost).
-ms-marco is the standard passage reranking dataset; MiniLM-L-6-v2 gives the best
-speed/accuracy trade-off at this scale. Alternative: ms-marco-MiniLM-L-12-v2
-(more accurate, 2× slower — overkill for <10 candidates).
+Multilingual Cross-encoder reranker. Runs locally (no API calls, no cost).
+BAAI/bge-reranker-m3 supports 100+ languages including Hindi, Chinese, Arabic,
+French, German, Spanish and more. Upgraded from ms-marco-MiniLM-L-6-v2 (English-only)
+to ensure consistent reranking performance across non-English PDFs.
 """
 
-FALLBACK_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+FALLBACK_EMBEDDING_MODEL: str = "paraphrase-multilingual-MiniLM-L12-v2"
 """
-Local sentence-transformers fallback for when Gemini embedding API is unavailable.
-384-dimensional output — note the different dimension from Gemini (768).
+Multilingual local sentence-transformers fallback for when Gemini embedding API is unavailable.
+384-dimensional output, supports 50+ languages.
+Upgraded from all-MiniLM-L6-v2 (English-only) to ensure accurate multilingual
+fallback embeddings. Handles Hindi, French, Chinese, Spanish, Arabic and more.
 IMPORTANT: If fallback is used, it must be used consistently for ALL vectors
 in that session. Mixing models in one FAISS index produces garbage similarities.
 See core/embedder.py for the model-consistency enforcement logic.

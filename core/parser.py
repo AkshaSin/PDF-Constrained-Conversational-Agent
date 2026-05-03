@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 import io
-from typing import List
+from typing import List, Tuple
 
 import fitz  # PyMuPDF
 
@@ -100,13 +100,13 @@ class PDFParser:
             
         return noise_lines
 
-    def _clean_text(self, pages: List[str], noise_lines: set[str]) -> str:
+    def _clean_text(self, pages: List[str], noise_lines: set[str]) -> List[Tuple[int, str]]:
         """
-        Remove noise lines and normalise text.
+        Remove noise lines and normalise text while retaining page numbers.
         """
         clean_pages = []
         
-        for page_text in pages:
+        for page_num, page_text in enumerate(pages, 1):
             # Fix broken hyphenation BEFORE splitting into lines.
             # This targets the PDF artifact where a word is split across a line:
             #   "environ-\nment" → "environment"
@@ -133,30 +133,29 @@ class PDFParser:
                     
                 clean_lines.append(stripped)
                 
-            clean_pages.append(" ".join(clean_lines))
+            full_text = " ".join(clean_lines)
+            full_text = re.sub(r'\s+', ' ', full_text).strip()
+            
+            if full_text:
+                clean_pages.append((page_num, full_text))
 
-        # Join all pages into one continuous string
-        full_text = " ".join(clean_pages)
-        
-        # Collapse multiple spaces into one (handles any residual whitespace)
-        full_text = re.sub(r'\s+', ' ', full_text)
-        
-        return full_text.strip()
+        return clean_pages
 
-    def parse(self) -> str:
+    def parse(self) -> List[Tuple[int, str]]:
         """
         Execute the full parsing pipeline.
         
         Returns:
-            A single, cleaned string containing the entire document's text.
+            A list of tuples, each containing (page_number, page_text).
         """
         try:
             pages = self._extract_raw_pages()
             noise_lines = self._find_headers_and_footers(pages)
-            clean_text = self._clean_text(pages, noise_lines)
+            clean_pages = self._clean_text(pages, noise_lines)
             
-            log.info(f"Successfully parsed PDF. Extracted {len(clean_text)} characters.")
-            return clean_text
+            total_chars = sum(len(text) for _, text in clean_pages)
+            log.info(f"Successfully parsed PDF. Extracted {total_chars} characters across {len(clean_pages)} pages.")
+            return clean_pages
             
         except Exception as e:
             log.error(f"Failed to parse PDF: {str(e)}")

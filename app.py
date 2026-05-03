@@ -24,6 +24,7 @@ from core.chunker import TextChunker
 from core.embedder import FAISSEmbedder
 from core.bm25_retriever import BM25Retriever
 from core.hybrid_retriever import HybridRetriever
+from config import INDEX_DIR
 from core.reranker import CrossEncoderReranker
 from agent.memory import SessionMemory
 from agent.generator import LLMGenerator
@@ -41,6 +42,20 @@ bm25 = BM25Retriever()
 hybrid_retriever = HybridRetriever(embedder=embedder, bm25=bm25)
 reranker = CrossEncoderReranker()
 generator = LLMGenerator()
+
+# Prepare persistence paths
+os.makedirs(INDEX_DIR, exist_ok=True)
+FAISS_INDEX_PATH = os.path.join(INDEX_DIR, "faiss.index")
+FAISS_MAP_PATH = os.path.join(INDEX_DIR, "faiss_map.pkl")
+BM25_INDEX_PATH = os.path.join(INDEX_DIR, "bm25.pkl")
+
+# Attempt to load existing indices
+if embedder.load_index(FAISS_INDEX_PATH, FAISS_MAP_PATH):
+    log.info("Persistent FAISS index loaded successfully.")
+    
+if bm25.load_index(BM25_INDEX_PATH):
+    log.info("Persistent BM25 index loaded successfully.")
+
 log.info("All backend components initialised successfully.")
 
 
@@ -73,10 +88,14 @@ def process_pdf(pdf_filepath: str) -> str:
             return "Failed to extract any text chunks from the PDF. It may be empty or an image-only PDF."
             
         # 3. Index (Build FAISS and BM25)
-        # In a V2, you would cache this in Redis. For V1, we build it in RAM.
         start_time = time.time()
         embedder.build_index(chunks)
         bm25.build_index(chunks)
+        
+        # 4. Persist indices to disk
+        embedder.save_index(FAISS_INDEX_PATH, FAISS_MAP_PATH)
+        bm25.save_index(BM25_INDEX_PATH)
+        
         end_time = time.time()
         
         msg = f"✅ PDF processed successfully!\n- Extracted {len(chunks)} chunks.\n- Indexed in {end_time - start_time:.2f} seconds.\n\nYou can now ask questions."

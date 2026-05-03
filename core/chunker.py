@@ -24,7 +24,7 @@ Design decisions:
   chunker to ensure you never split mid-sentence).
 """
 
-from typing import List
+from typing import List, Tuple
 from dataclasses import dataclass
 
 from config import CHUNK_SIZE, CHUNK_OVERLAP
@@ -40,6 +40,7 @@ class Chunk:
     Using a dataclass makes it easy to add metadata later (e.g. page numbers).
     """
     chunk_id: int
+    page_number: int
     text: str
     word_count: int
 
@@ -49,14 +50,18 @@ class TextChunker:
     Segments contiguous text into overlapping chunks.
     """
 
-    def __init__(self, text: str) -> None:
+    def __init__(self, pages: List[Tuple[int, str]]) -> None:
         """
         Args:
-            text: The clean, contiguous string from PDFParser.
+            pages: A list of (page_number, text_content) tuples from PDFParser.
         """
-        self.text = text
-        self.words = self.text.split()
-        log.debug(f"Initialised chunker with {len(self.words)} words.")
+        self.pages = pages
+        self.words_with_pages = []
+        for page_num, text in pages:
+            for word in text.split():
+                self.words_with_pages.append((page_num, word))
+                
+        log.debug(f"Initialised chunker with {len(self.words_with_pages)} words.")
 
     def chunk(self) -> List[Chunk]:
         """
@@ -65,7 +70,7 @@ class TextChunker:
         Returns:
             A list of `Chunk` objects.
         """
-        if not self.words:
+        if not self.words_with_pages:
             log.warning("Attempted to chunk empty text.")
             return []
 
@@ -81,15 +86,19 @@ class TextChunker:
             )
 
         # Sliding window over the word list
-        for i in range(0, len(self.words), step):
+        for i in range(0, len(self.words_with_pages), step):
             # Take a slice of CHUNK_SIZE words
-            chunk_words = self.words[i : i + CHUNK_SIZE]
+            chunk_slice = self.words_with_pages[i : i + CHUNK_SIZE]
+            
+            page_number = chunk_slice[0][0]
+            chunk_words = [word for _, word in chunk_slice]
             
             # Reconstruct the string for this chunk
             chunk_text = " ".join(chunk_words)
             
             chunks.append(Chunk(
                 chunk_id=chunk_id,
+                page_number=page_number,
                 text=chunk_text,
                 word_count=len(chunk_words)
             ))
@@ -97,7 +106,7 @@ class TextChunker:
             chunk_id += 1
 
         log.info(
-            f"Segmented {len(self.words)} words into {len(chunks)} chunks "
+            f"Segmented {len(self.words_with_pages)} words into {len(chunks)} chunks "
             f"(size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP})."
         )
         
