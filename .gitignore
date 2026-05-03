@@ -1,0 +1,56 @@
+# === Secrets & credentials ===
+.env
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+*.so
+.venv/
+venv/
+env/
+ENV/
+
+# === Logs ===
+agent.log
+*.log
+
+# === ML model caches (large, re-downloadable) ===
+.cache/
+models/
+*.bin
+*.pt
+*.safetensors
+
+# === FAISS index files (regenerated from PDF) ===
+*.index
+*.faiss
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === IDEs ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === Temporary files ===
+*.tmp
+*.bak
