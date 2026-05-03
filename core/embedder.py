@@ -47,8 +47,7 @@ class FAISSEmbedder:
 
     def __init__(self) -> None:
         """Initialise embedder and prepare models."""
-        # Initialize Gemini with the new genai SDK
-        self.client = genai.Client(api_key=GEMINI_API_KEY)
+        self._api_key = GEMINI_API_KEY
         
         self.primary_model = EMBEDDING_MODEL
         
@@ -88,8 +87,9 @@ class FAISSEmbedder:
                 raise RuntimeError("Already switched to fallback mode.")
                 
             log.debug(f"Calling Gemini API to embed {len(texts)} chunks...")
-            # Gemini expects 'models/...' prefix for embeddings
-            response = self.client.models.embed_content(
+            # Create a fresh client per call to avoid httpx connection pool issues
+            client = genai.Client(api_key=self._api_key)
+            response = client.models.embed_content(
                 model=self.primary_model,
                 contents=texts,
                 config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
@@ -156,7 +156,8 @@ class FAISSEmbedder:
                 model = self._get_fallback_model()
                 q_emb = np.array(model.encode([query]), dtype=np.float32)
             else:
-                response = self.client.models.embed_content(
+                client = genai.Client(api_key=self._api_key)
+                response = client.models.embed_content(
                     model=self.primary_model,
                     contents=[query],
                     config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")

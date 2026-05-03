@@ -53,8 +53,7 @@ class LLMGenerator:
     def __init__(self) -> None:
         """Initialise the generation model."""
         log.info(f"Initialising generator with model: {GENERATION_MODEL}")
-        # Explicitly configure with the key loaded from the environment
-        self.client = genai.Client(api_key=GEMINI_API_KEY)
+        self._api_key = GEMINI_API_KEY
         
         # Configure generation parameters to minimise hallucination
         # temperature=0.1 means the model will be highly deterministic and
@@ -120,8 +119,9 @@ class LLMGenerator:
         log.debug("Sending fully constructed prompt to Gemini...")
         
         try:
-            # Generate response as a stream
-            response_stream = self.client.models.generate_content_stream(
+            # Create a fresh client per call to avoid httpx connection pool issues
+            client = genai.Client(api_key=self._api_key)
+            response_stream = client.models.generate_content_stream(
                 model=GENERATION_MODEL,
                 contents=final_prompt,
                 config=self.config
