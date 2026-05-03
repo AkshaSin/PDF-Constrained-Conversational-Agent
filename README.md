@@ -1,14 +1,3 @@
----
-title: PDF RAG Agent
-emoji: 📚
-colorFrom: blue
-colorTo: indigo
-sdk: gradio
-sdk_version: 4.36.1
-app_file: app.py
-pinned: false
----
-
 # PDF-Constrained Conversational Agent
 
 This is a production-grade Conversational AI agent designed to answer user queries strictly based on a provided PDF document.
