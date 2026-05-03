@@ -101,7 +101,11 @@ class LLMGenerator:
             Strings representing the partial LLM response as it is generated.
         """
         context_text = self._format_context(chunks)
-        system_instruction = SYSTEM_PROMPT.format(context_text=context_text)
+        # IMPORTANT: We use .replace() not .format() here.
+        # If a PDF contains literal { or } characters (e.g. JSON examples,
+        # math notation, code snippets), .format() would crash with KeyError.
+        # .replace() does a dumb text substitution with no template parsing.
+        system_instruction = SYSTEM_PROMPT.replace("{context_text}", context_text)
         
         # Build the conversation manually to ensure the system prompt and history
         # are perfectly structured for the generation call, regardless of SDK version.

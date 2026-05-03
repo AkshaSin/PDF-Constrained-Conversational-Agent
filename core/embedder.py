@@ -52,8 +52,11 @@ class FAISSEmbedder:
         
         self.primary_model = EMBEDDING_MODEL
         
-        # Lazy-loaded fallback model (to save memory if not needed)
-        self._fallback_model: Optional[SentenceTransformer] = None
+        # Lazy-loaded fallback model (to save memory if not needed).
+        # Type is Optional[Any] because SentenceTransformer is only imported
+        # inside _get_fallback_model() to avoid crashing at startup when
+        # PyTorch is unavailable. We cannot reference it as a class-level type hint.
+        self._fallback_model: Optional[Any] = None
         self.using_fallback = False
         
         # FAISS index and metadata storage

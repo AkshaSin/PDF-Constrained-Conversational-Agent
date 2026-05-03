@@ -103,6 +103,15 @@ def chat_inference(
     """
     # Initialize memory for this specific user session
     memory = SessionMemory(session_id)
+
+    # GUARD: Check that a PDF has actually been uploaded and indexed.
+    # If the user sends a message with no PDF loaded, embedder.index is None.
+    # Without this check, the pipeline would run on an empty FAISS index,
+    # get zero results, and the LLM might answer from general world knowledge —
+    # breaking our core "PDF-constrained" guarantee.
+    if embedder.index is None or embedder.index.ntotal == 0:
+        yield [{"role": "assistant", "content": "⚠️ Please upload and process a PDF document first before asking questions."}]
+        return
     
     # 1. Update UI immediately with the user's message and a blank assistant response
     chat_history.append({"role": "user", "content": user_message})

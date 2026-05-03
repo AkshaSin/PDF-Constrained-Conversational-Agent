@@ -13,11 +13,15 @@ Key responsibilities:
 
 Design decisions:
 -----------------
-* Library choice: PyMuPDF (fitz)
-  Alternative: pdfplumber (more precise bounding boxes, but 5-10x slower).
-  Alternative: PyPDF2 (very fast, but poor text layout retention).
-  Why PyMuPDF wins: It's the industry standard for fast, high-quality text
-  extraction at scale.
+* Library choice: pypdf (pure Python)
+  Originally planned to use PyMuPDF (fitz), the industry standard for fast,
+  high-quality text extraction. However, PyMuPDF ships with native C++ DLLs
+  that require Microsoft Visual C++ Redistributables to be installed. On a
+  bare Windows machine without them, it raises [WinError 126] at import time
+  and crashes the entire app before the user sees any UI.
+  pypdf is slower and less accurate on complex layouts, but runs on any Python
+  environment without system-level dependencies — critical for portable deployment.
+  Alternative for V1: pdfplumber (precise bounding boxes, table extraction).
 
 * Header/Footer Removal Strategy:
   We use a heuristic approach based on frequency analysis. If a short line of
@@ -106,6 +110,15 @@ class PDFParser:
         clean_pages = []
         
         for page_text in pages:
+            # Fix broken hyphenation BEFORE splitting into lines.
+            # This targets the PDF artifact where a word is split across a line:
+            #   "environ-\nment" → "environment"
+            # We match ONLY hyphen-NEWLINE patterns, NOT "well-known" style
+            # compound words (which use hyphen-space or just hyphen with no \n).
+            # Applying this per-page before joining prevents the regex from
+            # mangling legitimate compound words in the concatenated text.
+            page_text = re.sub(r'(\w+)-\n\s*(\w+)', r'\1\2', page_text)
+
             lines = page_text.split('\n')
             clean_lines = []
             
@@ -123,19 +136,12 @@ class PDFParser:
                     
                 clean_lines.append(stripped)
                 
-            # Join lines with a space, but we'll need to fix hyphens later
             clean_pages.append(" ".join(clean_lines))
 
-        # Join all pages
+        # Join all pages into one continuous string
         full_text = " ".join(clean_pages)
         
-        # --- Post-processing normalisation ---
-        
-        # Fix broken hyphenation: "pro- ject" -> "project"
-        # Often happens when a word wraps across a line in a PDF.
-        full_text = re.sub(r'(\w+)-\s+(\w+)', r'\1\2', full_text)
-        
-        # Collapse multiple spaces into one
+        # Collapse multiple spaces into one (handles any residual whitespace)
         full_text = re.sub(r'\s+', ' ', full_text)
         
         return full_text.strip()
