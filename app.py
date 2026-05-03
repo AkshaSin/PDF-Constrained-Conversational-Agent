@@ -239,4 +239,4 @@ if __name__ == "__main__":
     # launch() starts the local web server.
     # theme is passed here as per Gradio 6.0+ API.
     # share=False keeps it local. Set True to generate a public link.
-    demo.launch(server_name="127.0.0.1", share=False, theme=gr.themes.Soft())
+    demo.launch(server_name="0.0.0.0", share=False, theme=gr.themes.Soft())
