@@ -57,3 +57,7 @@ desktop.ini
 
 # === Developer notes (local only, not for repo) ===
 devnote.md
+
+# === Generated PDFs & generator scripts (local artifacts) ===
+*.pdf
+generate_*.py

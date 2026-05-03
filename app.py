@@ -108,11 +108,7 @@ def process_pdf(pdf_filepath: str) -> str:
         return err_msg
 
 
-def chat_inference(
-    user_message: str, 
-    chat_history: List[dict], 
-    session_id: str
-):
+def chat_inference(user_message, chat_history, session_id):
     """
     The Generation Pipeline.
     Runs every time the user sends a message.
@@ -129,12 +125,11 @@ def chat_inference(
     # get zero results, and the LLM might answer from general world knowledge —
     # breaking our core "PDF-constrained" guarantee.
     if embedder.index is None or embedder.index.ntotal == 0:
-        yield [{"role": "assistant", "content": "⚠️ Please upload and process a PDF document first before asking questions."}]
+        yield [("⚠️ System", "Please upload and process a PDF document first before asking questions.")]
         return
     
     # 1. Update UI immediately with the user's message and a blank assistant response
-    chat_history.append({"role": "user", "content": user_message})
-    chat_history.append({"role": "assistant", "content": ""})
+    chat_history.append((user_message, ""))
     yield chat_history
     
     # 2. Retrieve Conversation Context from Redis
@@ -158,7 +153,7 @@ def chat_inference(
     for chunk_text in response_stream:
         partial_response += chunk_text
         # Update the blank assistant response with the new chunk
-        chat_history[-1]["content"] = partial_response
+        chat_history[-1] = (user_message, partial_response)
         yield chat_history
         
     # 6. Save Turn to Memory (Post-Generation)
@@ -170,7 +165,7 @@ def chat_inference(
 # Gradio UI Layout
 # =====================================================================
 
-with gr.Blocks(title="PDF-Constrained Agent") as demo:
+with gr.Blocks(title="PDF-Constrained Agent", theme=gr.themes.Soft()) as demo:
     # A hidden state variable to hold the unique Session ID for this browser tab
     session_id_state = gr.State(lambda: str(uuid.uuid4()))
     
@@ -239,4 +234,4 @@ if __name__ == "__main__":
     # launch() starts the local web server.
     # theme is passed here as per Gradio 6.0+ API.
     # share=False keeps it local. Set True to generate a public link.
-    demo.launch(server_name="0.0.0.0", share=False, theme=gr.themes.Soft())
+    demo.launch(server_name="0.0.0.0", share=False, show_api=False)
