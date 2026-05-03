@@ -13,15 +13,12 @@ Key responsibilities:
 
 Design decisions:
 -----------------
-* Library choice: pypdf (pure Python)
-  Originally planned to use PyMuPDF (fitz), the industry standard for fast,
-  high-quality text extraction. However, PyMuPDF ships with native C++ DLLs
-  that require Microsoft Visual C++ Redistributables to be installed. On a
-  bare Windows machine without them, it raises [WinError 126] at import time
-  and crashes the entire app before the user sees any UI.
-  pypdf is slower and less accurate on complex layouts, but runs on any Python
-  environment without system-level dependencies — critical for portable deployment.
-  Alternative for V1: pdfplumber (precise bounding boxes, table extraction).
+* Library choice: PyMuPDF (fitz)
+  This is the V1 upgrade. PyMuPDF is the industry standard for fast,
+  high-quality text extraction. It handles multi-column layouts and
+  ligatures significantly better than pure Python alternatives.
+  Note: Requires C++ Redistributables on Windows. Safe to deploy on
+  Linux servers (like Hugging Face Spaces) where binaries are pre-compiled.
 
 * Header/Footer Removal Strategy:
   We use a heuristic approach based on frequency analysis. If a short line of
@@ -38,7 +35,7 @@ from collections import Counter
 import io
 from typing import List
 
-from pypdf import PdfReader
+import fitz  # PyMuPDF
 
 from config import HEADER_FOOTER_FREQ_THRESHOLD, HEADER_FOOTER_MIN_PAGES
 from utils.logger import get_logger
@@ -59,15 +56,15 @@ class PDFParser:
             file_bytes: The raw binary content of the PDF file.
         """
         self.file_bytes = file_bytes
-        self.doc = PdfReader(io.BytesIO(file_bytes))
-        self.num_pages = len(self.doc.pages)
-        log.info(f"Loaded PDF with {self.num_pages} pages using pypdf.")
+        self.doc = fitz.open(stream=file_bytes, filetype="pdf")
+        self.num_pages = len(self.doc)
+        log.info(f"Loaded PDF with {self.num_pages} pages using PyMuPDF.")
 
     def _extract_raw_pages(self) -> List[str]:
         """Extract raw text from each page."""
         pages = []
-        for page in self.doc.pages:
-            text = page.extract_text() or ""
+        for page in self.doc:
+            text = page.get_text() or ""
             pages.append(text)
         return pages
 
@@ -165,4 +162,5 @@ class PDFParser:
             log.error(f"Failed to parse PDF: {str(e)}")
             raise
         finally:
-            pass # pypdf doesn't require explicit closing of BytesIO streams
+            if hasattr(self, 'doc') and self.doc:
+                self.doc.close()
