@@ -96,10 +96,14 @@ class LLMGenerator:
         log.info(f"Initialising generator with model: {GENERATION_MODEL}")
         self._api_key = GEMINI_API_KEY
         
-        # Configure generation parameters to minimise hallucination
+        # Configure generation parameters to minimise hallucination.
+        # thinking_budget=0 disables Gemini 2.5-flash's native thinking tokens,
+        # which are billed but invisible — they can add hundreds of tokens per
+        # response without contributing to the visible output.
         self.config = types.GenerateContentConfig(
             temperature=0.1,
             top_p=0.8,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
         log.debug("Generator initialised successfully.")
 
@@ -198,19 +202,37 @@ class LLMGenerator:
                 buffer = ""
                 is_tool_call = False
                 stream_buffer_active = True
-                
+
                 for chunk in response_stream:
                     if not chunk.text:
                         continue
-                        
+
                     if stream_buffer_active:
                         buffer += chunk.text
                         stripped = buffer.lstrip()
+
                         if stripped.startswith("<tool_call"):
                             is_tool_call = True
-                            stream_buffer_active = False # keep buffering silently
+                            stream_buffer_active = False
+                        elif stripped.startswith("<thinking"):
+                            # Model emitted a <thinking> block before (possibly) a tool call.
+                            # Keep buffering silently until </thinking> is complete, then
+                            # decide based on what follows it.
+                            if "</thinking>" in buffer:
+                                after_thinking = buffer.split("</thinking>", 1)[1].lstrip()
+                                if after_thinking.startswith("<tool_call"):
+                                    is_tool_call = True
+                                    stream_buffer_active = False
+                                elif len(after_thinking) > 30 and "<tool_call" not in after_thinking:
+                                    # Thinking block done, followed by regular answer text — flush
+                                    yield buffer
+                                    buffer = ""
+                                    stream_buffer_active = False
+                                    is_tool_call = False
+                                # else: </thinking> just arrived, not enough after-text yet — keep buffering
+                            # else: still inside the thinking block — keep buffering
                         elif len(stripped) > 50 and "<tool_call" not in buffer:
-                            # Not a tool call. Flush buffer and yield the rest
+                            # No thinking block, no tool call incoming — flush as regular response
                             yield buffer
                             buffer = ""
                             stream_buffer_active = False

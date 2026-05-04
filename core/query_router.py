@@ -2,7 +2,7 @@ import re
 from typing import TypedDict, Optional
 from google import genai
 from google.genai import types
-from config import GENERATION_MODEL, GEMINI_API_KEY
+from config import ROUTER_MODEL, GEMINI_API_KEY
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -32,22 +32,34 @@ class QueryRouter:
     def __init__(self):
         self._api_key = GEMINI_API_KEY
 
+    # Patterns for word-count queries. Each captures the target word in group 1.
+    _WORD_COUNT_PATTERNS = [
+        re.compile(r'\bhow many times (?:is|does|was|has) (?:the word )?["\']?(\w+)["\']? (?:used|appear|mentioned|occur|come up)\b'),
+        re.compile(r'\bhow many times (?:does )?(?:the word )?["\']?(\w+)["\']? (?:appear|occur|comes up)\b'),
+        re.compile(r'\bcount (?:the word |occurrences of |instances of )?["\']?(\w+)["\']?\b'),
+        re.compile(r'\bhow often (?:is|does) (?:the word )?["\']?(\w+)["\']? (?:used|appear|mentioned|occur)\b'),
+        re.compile(r'\b(?:frequency|occurrences|instances) of ["\']?(\w+)["\']?\b'),
+        re.compile(r'\bhow many (?:times|occurrences|instances) (?:of )?["\']?(\w+)["\']?\b'),
+    ]
+
     def classify(self, query: str) -> RouterResult:
         query_lower = query.lower()
-        
+
         # 1. Regex Rules (High Confidence)
-        if re.search(r'\bhow many pages\b', query_lower):
+        if re.search(r'\b(how many pages|page count|number of pages|total pages|pages (does|in (the|this)))\b', query_lower):
             return {"intent": "factual", "sub_intent": "page_count", "confidence": 1.0, "reasoning": "Regex match for page count"}
-        
-        word_count_match = re.search(r'\bhow many times is the word ["\']?(\w+)["\']? used\b', query_lower)
-        if word_count_match:
-            return {"intent": "factual", "sub_intent": f"word_count:{word_count_match.group(1)}", "confidence": 1.0, "reasoning": "Regex match for word count"}
-            
-        freq_match = re.search(r'\bwhat are the top (\d+) most used words\b', query_lower)
+
+        for pattern in self._WORD_COUNT_PATTERNS:
+            m = pattern.search(query_lower)
+            if m:
+                word = m.group(1)
+                return {"intent": "factual", "sub_intent": f"word_count:{word}", "confidence": 1.0, "reasoning": "Regex match for word count"}
+
+        freq_match = re.search(r'\b(?:what are |show me |list )?the top (\d+) (?:most )?(?:used |common |frequent )?words\b', query_lower)
         if freq_match:
              return {"intent": "factual", "sub_intent": f"top_words:{freq_match.group(1)}", "confidence": 1.0, "reasoning": "Regex match for top words"}
 
-        if re.search(r'\b(list all|find every mention of|find all instances of)\b', query_lower):
+        if re.search(r'\b(list all|find every mention of|find all instances of|all occurrences of)\b', query_lower):
             return {"intent": "aggregation", "sub_intent": None, "confidence": 1.0, "reasoning": "Regex match for aggregation"}
             
         # 2. LLM Fallback
@@ -62,7 +74,7 @@ class QueryRouter:
                 response_mime_type="application/json"
             )
             response = client.models.generate_content(
-                model=GENERATION_MODEL,
+                model=ROUTER_MODEL,
                 contents=ROUTER_PROMPT.replace("{query}", query),
                 config=config
             )

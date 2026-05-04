@@ -97,6 +97,13 @@ Generation model. 1M context window, free tier, fast streaming.
 Must use 2.5-flash because 2.0-flash has its free tier disabled for newly created API keys.
 """
 
+ROUTER_MODEL: str = "gemini-1.5-flash"
+"""
+Lightweight model used for query routing and history summarization.
+These tasks are simple classification/summarization jobs that don't need the full
+power (or cost) of gemini-2.5-flash. 1.5-flash is ~10x cheaper per token.
+"""
+
 RERANKER_MODEL: str = "BAAI/bge-reranker-m3"
 """
 Multilingual Cross-encoder reranker. Runs locally (no API calls, no cost).

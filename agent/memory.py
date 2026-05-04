@@ -29,7 +29,7 @@ import redis
 from google import genai
 
 from core.metadata_store import DocumentMetadata
-from config import REDIS_URL, MAX_HISTORY_MESSAGES, REDIS_SESSION_TTL, GEMINI_API_KEY, GENERATION_MODEL
+from config import REDIS_URL, MAX_HISTORY_MESSAGES, REDIS_SESSION_TTL, GEMINI_API_KEY, ROUTER_MODEL
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -150,7 +150,7 @@ class SessionMemory:
             client = genai.Client(api_key=GEMINI_API_KEY)
             prompt = f"Summarize the following conversation history concisely in 1-2 sentences. Focus on the main topics discussed:\n\n{text_to_summarize}"
             response = client.models.generate_content(
-                model=GENERATION_MODEL,
+                model=ROUTER_MODEL,
                 contents=prompt,
             )
             return response.text
