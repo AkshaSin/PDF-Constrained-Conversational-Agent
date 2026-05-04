@@ -289,9 +289,9 @@ with gr.Blocks(title="PDF-Constrained Agent", theme=gr.themes.Soft()) as demo:
             
         with gr.Column(scale=3):
             # Right panel: Chat interface
-            # Gradio 6+ removed the `type` parameter entirely — messages dict format
-            # {"role": "user"/"assistant", "content": "..."} is now the only format.
-            chatbot = gr.Chatbot(label="Conversation", height=600, type="messages")
+            # Gradio 5.33.0: messages dict format {"role", "content"} is used.
+            # type= parameter does not exist in 5.x; messages format is default.
+            chatbot = gr.Chatbot(label="Conversation", height=600)
             msg_input = gr.Textbox(
                 label="Ask a question about the document",
                 placeholder="Type your question and press Enter...",
