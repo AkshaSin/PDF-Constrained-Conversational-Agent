@@ -62,7 +62,7 @@ def transform_thinking_tags(text: str) -> str:
         return text
     text = text.replace(
         "<thinking>",
-        "<details open>\n<summary>🧠 Agent Thinking...</summary>\n\n"
+        "<details open>\n<summary>Agent Thinking...</summary>\n\n"
     )
     text = text.replace("</thinking>", "\n</details>\n\n")
     return text
@@ -248,7 +248,7 @@ def chat_inference(user_message, chat_history, session_id):
     # Step 7: Stream ends — user can click to collapse the accordion
     for chunk in response_stream:
         if isinstance(chunk, dict) and chunk.get("type") == "tool_status":
-            chat_history[-1]["content"] = f"🔧 Running tool: {chunk['name']}..."
+            chat_history[-1]["content"] = f"Running tool: {chunk['name']}..."
             yield chat_history
         else:
             if not first_chunk_received:

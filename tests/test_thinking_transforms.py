@@ -28,7 +28,7 @@ def transform_thinking_tags(text: str) -> str:
         return text
     text = text.replace(
         "<thinking>",
-        "<details open>\n<summary>\U0001f9e0 Agent Thinking...</summary>\n\n"
+        "<details open>\n<summary>Agent Thinking...</summary>\n\n"
     )
     text = text.replace("</thinking>", "\n</details>\n\n")
     return text
@@ -96,7 +96,7 @@ class TestTransformThinkingTags(unittest.TestCase):
     def test_summary_label_present(self):
         """The accordion summary label must contain the 🧠 emoji."""
         result = transform_thinking_tags("<thinking>reasoning</thinking>answer")
-        self.assertIn("\U0001f9e0 Agent Thinking...", result)
+        self.assertIn("Agent Thinking...", result)
 
     def test_details_open_attribute(self):
         """Accordion must use <details open> so it auto-expands during streaming."""
