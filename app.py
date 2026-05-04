@@ -14,10 +14,13 @@ Key responsibilities:
 
 import os
 import uuid
+import warnings
 import time
-from typing import Tuple, List
+from typing import Dict, List, Tuple
 
 import gradio as gr
+from fastapi import FastAPI
+import uvicorn
 
 from core.parser import PDFParser
 from core.chunker import TextChunker
@@ -332,10 +335,21 @@ with gr.Blocks(title="PDF-Constrained Agent", theme=gr.themes.Soft()) as demo:
         outputs=[chatbot, msg_input]
     )
 
+# =====================================================================
+# FastAPI Integration (Enables Swagger UI at /docs)
+# =====================================================================
 
-# Standard Python execution guard
+app = FastAPI(
+    title="PDF RAG Agent API",
+    description="FastAPI Auto-Docs (Swagger UI) for the PDF-Constrained Conversational Agent",
+    version="1.0.0"
+)
+
+# Mount the Gradio UI at the root path.
+# The FastAPI Swagger UI will be automatically available at /docs
+app = gr.mount_gradio_app(app, demo, path="/")
+
+# Standard Python execution guard for local testing
 if __name__ == "__main__":
-    log.info("Starting Gradio server...")
-    # launch() starts the local web server.
-    # share=False keeps it local. Set True to generate a public link.
-    demo.launch(server_name="0.0.0.0", share=False)
+    log.info("Starting FastAPI server with Uvicorn...")
+    uvicorn.run(app, host="0.0.0.0", port=7860)
