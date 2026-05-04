@@ -5,3 +5,4 @@ rank-bm25
 pymupdf
 redis
 python-dotenv
+# v2 — CoT thinking accordion
