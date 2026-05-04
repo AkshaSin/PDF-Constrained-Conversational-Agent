@@ -85,6 +85,13 @@ These queries are **fully answerable** from the PDF. The agent must produce an a
 
 **Grading criteria:** Both forms named correctly, demonstrates memory of prior conversational context.
 
+### Query 6 (Agentic Tool-Use)
+**Input:** `Exactly how many times does the word 'climate' appear in this document?`
+
+**Expected behavior:** The agent invokes the `count_word` Python tool. The UI briefly shows `🔧 Running tool: count_word...` before the LLM returns the exact mathematical count.
+
+**Grading criteria:** Exact word count derived from Python execution, not hallucinated by token prediction.
+
 ---
 
 ## ❌ Invalid / Out-of-Scope Queries (Agent Must Refuse)

@@ -15,6 +15,7 @@ This is a production-grade Conversational AI agent designed to answer user queri
 
 ## Features
 - **Strict Grounding:** The agent will only answer questions if the answer exists in the uploaded PDF.
+- **Agentic Tool-Use:** The LLM can autonomously invoke Python code to calculate exact word counts and extract deterministic statistics without hallucinating.
 - **Anti-Hallucination:** It explicitly refuses to answer out-of-scope queries.
 - **Citations:** Generates precise `[Source: Page X]` citations for every claim.
 - **Recursive Memory:** Handles long conversations without losing context.

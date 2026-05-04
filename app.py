@@ -28,6 +28,11 @@ from config import INDEX_DIR
 from core.reranker import CrossEncoderReranker
 from agent.memory import SessionMemory
 from agent.generator import LLMGenerator
+from core.query_router import QueryRouter
+from core.factual_answerer import FactualAnswerer
+from core.metadata_store import DocumentMetadata
+from core.tools import ToolExecutor
+from collections import Counter
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -63,7 +68,7 @@ log.info("All backend components initialised successfully.")
 # Pipeline Functions
 # =====================================================================
 
-def process_pdf(pdf_filepath: str) -> str:
+def process_pdf(pdf_filepath: str, session_id: str) -> str:
     """
     The Ingestion Pipeline.
     Runs when a user uploads a file.
@@ -78,10 +83,23 @@ def process_pdf(pdf_filepath: str) -> str:
         with open(pdf_filepath, "rb") as f:
             raw_bytes = f.read()
         parser = PDFParser(raw_bytes)
-        clean_text = parser.parse()
+        clean_pages, page_boundaries = parser.parse()
+        
+        # Calculate Metadata
+        total_chars = sum(len(text) for _, text in clean_pages)
+        words = []
+        for _, text in clean_pages:
+            words.extend(text.lower().split())
+        word_count = len(words)
+        word_frequencies = dict(Counter(words))
+        page_count = parser.num_pages
+        full_text = " ".join([text for _, text in clean_pages])
+        
+        metadata = DocumentMetadata(page_count, word_count, total_chars, word_frequencies, page_boundaries, full_text)
+        SessionMemory(session_id).save_metadata(metadata)
         
         # 2. Chunk
-        chunker = TextChunker(clean_text)
+        chunker = TextChunker(clean_pages)
         chunks = chunker.chunk()
         
         if not chunks:
@@ -98,12 +116,12 @@ def process_pdf(pdf_filepath: str) -> str:
         
         end_time = time.time()
         
-        msg = f"✅ PDF processed successfully!\n- Extracted {len(chunks)} chunks.\n- Indexed in {end_time - start_time:.2f} seconds.\n\nYou can now ask questions."
+        msg = f"[SUCCESS] PDF processed successfully!\n- Extracted {len(chunks)} chunks.\n- Indexed in {end_time - start_time:.2f} seconds.\n\nYou can now ask questions."
         log.info(msg.replace("\n", " "))
         return msg
         
     except Exception as e:
-        err_msg = f"❌ Error processing PDF: {str(e)}"
+        err_msg = f"[ERROR] Error processing PDF: {str(e)}"
         log.error(err_msg)
         return err_msg
 
@@ -125,36 +143,72 @@ def chat_inference(user_message, chat_history, session_id):
     # get zero results, and the LLM might answer from general world knowledge —
     # breaking our core "PDF-constrained" guarantee.
     if embedder.index is None or embedder.index.ntotal == 0:
-        yield [("⚠️ System", "Please upload and process a PDF document first before asking questions.")]
+        chat_history.append({"role": "assistant", "content": "⚠️ System: Please upload and process a PDF document first before asking questions."})
+        yield chat_history
         return
     
     # 1. Update UI immediately with the user's message and a blank assistant response
-    chat_history.append((user_message, ""))
+    chat_history.append({"role": "user", "content": user_message})
+    chat_history.append({"role": "assistant", "content": ""})
     yield chat_history
     
     # 2. Retrieve Conversation Context from Redis
     recent_history = memory.get_history()
     
-    # 3. Retrieval Stage (Hybrid: FAISS + BM25)
-    candidate_chunks = hybrid_retriever.retrieve(user_message)
+    # Retrieve Metadata
+    metadata = memory.get_metadata()
+    if not metadata:
+        chat_history.append({"role": "assistant", "content": "⚠️ System: Document metadata not found. Please re-upload the PDF to initialize the semantic engine."})
+        yield chat_history
+        return
+        
+    # 3. Route Query
+    router = QueryRouter()
+    routing_result = router.classify(user_message)
+    intent = routing_result["intent"]
+    sub_intent = routing_result.get("sub_intent")
     
-    # 4. Reranking Stage (Cross-Encoder)
-    best_chunks = reranker.rerank(user_message, candidate_chunks)
+    verified_fact = None
+    if intent == "factual":
+        answerer = FactualAnswerer(metadata)
+        verified_fact = answerer.answer(sub_intent, user_message)
+        log.info(f"Query routed as FACTUAL. Fact: {verified_fact}")
+        best_chunks = []
+    elif intent == "aggregation":
+        log.info("Query routed as AGGREGATION. Falling back to hybrid retrieval due to pipeline limitations.")
+        candidate_chunks = hybrid_retriever.retrieve(user_message)
+        best_chunks = reranker.rerank(user_message, candidate_chunks)
+    else:
+        log.info("Query routed as SEMANTIC.")
+        candidate_chunks = hybrid_retriever.retrieve(user_message)
+        best_chunks = reranker.rerank(user_message, candidate_chunks)
     
     # 5. Generation Stage (LLM)
+    tool_executor = ToolExecutor(metadata)
     partial_response = ""
     # We pass the question, the retrieved context, and the short-term memory
-    response_stream = generator.generate_stream(
+    response_stream = generator.generate_with_tools(
         query=user_message,
         chunks=best_chunks,
-        history=recent_history
+        history=recent_history,
+        tool_executor=tool_executor,
+        verified_fact=verified_fact
     )
     
-    for chunk_text in response_stream:
-        partial_response += chunk_text
-        # Update the blank assistant response with the new chunk
-        chat_history[-1] = (user_message, partial_response)
-        yield chat_history
+    first_chunk_received = False
+    
+    for chunk in response_stream:
+        if isinstance(chunk, dict) and chunk.get("type") == "tool_status":
+            chat_history[-1]["content"] = f"🔧 Running tool: {chunk['name']}..."
+            yield chat_history
+        else:
+            if not first_chunk_received:
+                chat_history[-1]["content"] = ""  # Explicitly clear "Running tool" preamble
+                first_chunk_received = True
+                
+            partial_response += chunk
+            chat_history[-1]["content"] = partial_response
+            yield chat_history
         
     # 6. Save Turn to Memory (Post-Generation)
     # Once the stream finishes, we save the full exchange to Redis
@@ -165,7 +219,7 @@ def chat_inference(user_message, chat_history, session_id):
 # Gradio UI Layout
 # =====================================================================
 
-with gr.Blocks(title="PDF-Constrained Agent", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="PDF-Constrained Agent") as demo:
     # A hidden state variable to hold the unique Session ID for this browser tab
     session_id_state = gr.State(lambda: str(uuid.uuid4()))
     
@@ -198,7 +252,7 @@ with gr.Blocks(title="PDF-Constrained Agent", theme=gr.themes.Soft()) as demo:
     # When a PDF is uploaded, run process_pdf and update the status box
     pdf_input.upload(
         fn=process_pdf,
-        inputs=[pdf_input],
+        inputs=[pdf_input, session_id_state],
         outputs=[status_output]
     )
     
@@ -234,4 +288,4 @@ if __name__ == "__main__":
     # launch() starts the local web server.
     # theme is passed here as per Gradio 6.0+ API.
     # share=False keeps it local. Set True to generate a public link.
-    demo.launch(server_name="0.0.0.0", share=False, show_api=False)
+    demo.launch(server_name="0.0.0.0", share=False, theme=gr.themes.Soft())

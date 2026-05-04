@@ -100,20 +100,17 @@ class PDFParser:
             
         return noise_lines
 
-    def _clean_text(self, pages: List[str], noise_lines: set[str]) -> List[Tuple[int, str]]:
+    def _clean_text(self, pages: List[str], noise_lines: set[str]) -> Tuple[List[Tuple[int, str]], List[int]]:
         """
         Remove noise lines and normalise text while retaining page numbers.
+        Also calculates character offsets for the start of each page.
         """
         clean_pages = []
+        page_boundaries = []
+        cumulative_chars = 0
         
         for page_num, page_text in enumerate(pages, 1):
             # Fix broken hyphenation BEFORE splitting into lines.
-            # This targets the PDF artifact where a word is split across a line:
-            #   "environ-\nment" → "environment"
-            # We match ONLY hyphen-NEWLINE patterns, NOT "well-known" style
-            # compound words (which use hyphen-space or just hyphen with no \n).
-            # Applying this per-page before joining prevents the regex from
-            # mangling legitimate compound words in the concatenated text.
             page_text = re.sub(r'(\w+)-\n\s*(\w+)', r'\1\2', page_text)
 
             lines = page_text.split('\n')
@@ -137,25 +134,30 @@ class PDFParser:
             full_text = re.sub(r'\s+', ' ', full_text).strip()
             
             if full_text:
+                page_boundaries.append(cumulative_chars)
                 clean_pages.append((page_num, full_text))
+                # Add 1 for the space that would theoretically join this page with the next
+                cumulative_chars += len(full_text) + 1
 
-        return clean_pages
+        return clean_pages, page_boundaries
 
-    def parse(self) -> List[Tuple[int, str]]:
+    def parse(self) -> Tuple[List[Tuple[int, str]], List[int]]:
         """
         Execute the full parsing pipeline.
         
         Returns:
-            A list of tuples, each containing (page_number, page_text).
+            A tuple containing:
+            - A list of tuples, each containing (page_number, page_text).
+            - A list of character offsets indicating the start of each page.
         """
         try:
             pages = self._extract_raw_pages()
             noise_lines = self._find_headers_and_footers(pages)
-            clean_pages = self._clean_text(pages, noise_lines)
+            clean_pages, page_boundaries = self._clean_text(pages, noise_lines)
             
             total_chars = sum(len(text) for _, text in clean_pages)
             log.info(f"Successfully parsed PDF. Extracted {total_chars} characters across {len(clean_pages)} pages.")
-            return clean_pages
+            return clean_pages, page_boundaries
             
         except Exception as e:
             log.error(f"Failed to parse PDF: {str(e)}")

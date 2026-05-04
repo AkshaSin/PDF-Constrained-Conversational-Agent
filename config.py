@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 # Load .env file into os.environ (no-op if already set via system env, which
 # means HF Spaces secrets work without any code change at deployment time).
 # ---------------------------------------------------------------------------
-load_dotenv()
+load_dotenv(override=True)
 
 
 def _require_env(key: str) -> str:
@@ -94,7 +94,7 @@ Chosen over OpenAI ada-002 (paid) and older Gemini models (lower quality).
 GENERATION_MODEL: str = "gemini-2.5-flash"
 """
 Generation model. 1M context window, free tier, fast streaming.
-Alternative considered: gemini-1.5-pro (higher quality but slower, lower free quota).
+Must use 2.5-flash because 2.0-flash has its free tier disabled for newly created API keys.
 """
 
 RERANKER_MODEL: str = "BAAI/bge-reranker-m3"
@@ -151,20 +151,22 @@ Reference: Module 7 Page 6 — fixed vs overlapping chunking windows.
 # RETRIEVAL PARAMETERS
 # ---------------------------------------------------------------------------
 
-TOP_K_RETRIEVAL: int = 10
+TOP_K_RETRIEVAL: int = 25
 """
 Number of candidates retrieved from both FAISS and BM25 before fusion.
 
-Retrieve broadly for recall (10), rerank precisely for precision (TOP_K_RERANK=3).
+Retrieve broadly for recall (25), rerank precisely for precision (TOP_K_RERANK=8).
 Higher values increase recall but add cross-encoder latency linearly.
+Increased from 10 to 25 to handle large multi-megabyte PDFs.
 """
 
-TOP_K_RERANK: int = 3
+TOP_K_RERANK: int = 8
 """
 Number of chunks passed to the LLM after cross-encoder reranking.
 
-3 chunks × ~500 words each ≈ 1500 words of context, well within Gemini's 1M
-context window. Enough to answer most focused document questions.
+8 chunks × ~500 words each ≈ 4000 words of context, well within Gemini's 1M
+context window. Enough to answer complex document questions on large PDFs.
+Increased from 3 to 8 to reduce false negatives on large datasets.
 """
 
 RRF_CONSTANT: int = 60
@@ -181,7 +183,7 @@ Higher k dampens the influence of top-ranked results; lower k amplifies it.
 k=60 provides robust performance across query types without per-dataset tuning.
 """
 
-SIMILARITY_THRESHOLD_GEMINI: float = 0.4
+SIMILARITY_THRESHOLD_GEMINI: float = 0.35
 """
 Minimum FAISS cosine similarity score to proceed with retrieval (Gemini embeddings).
 
@@ -190,11 +192,11 @@ This is Anti-Hallucination Layer 1 — see architecture overview in app.py.
 
 Calibrated against gemini-embedding-2 score distribution:
   < 0.25 = unrelated
-  0.25-0.4 = loosely / indirectly related (may be semantically adjacent)
-  > 0.4 = genuinely relevant
+  0.25-0.35 = loosely / indirectly related (may be semantically adjacent)
+  > 0.35 = genuinely relevant
 
-Previously 0.5 — lowered to 0.4 to reduce False Negatives on queries where the
-user's phrasing is semantically adjacent to the document content (e.g. asking about
+Previously 0.4 — lowered to 0.35 to reduce False Negatives on queries on large PDFs
+where the exact answer might have slightly lower cosine similarity due to surrounding noise.
 'renewable energy and air pollution' when the doc discusses fossil fuels causing
 air pollution and renewable energy minimising it).
 

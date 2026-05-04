@@ -28,6 +28,7 @@ import redis
 
 from google import genai
 
+from core.metadata_store import DocumentMetadata
 from config import REDIS_URL, MAX_HISTORY_MESSAGES, REDIS_SESSION_TTL, GEMINI_API_KEY, GENERATION_MODEL
 from utils.logger import get_logger
 
@@ -47,10 +48,31 @@ class SessionMemory:
         self.session_id = session_id
         # The key we'll use to store this session's data in Redis
         self.redis_key = f"chat_history:{self.session_id}"
+        self.metadata_key = f"metadata:{self.session_id}"
         
         # Connect to Redis. decode_responses=True means we get strings back instead of bytes
         self.client = redis.from_url(REDIS_URL, decode_responses=True)
         log.debug(f"Initialised memory for session: {self.session_id}")
+
+    def save_metadata(self, metadata: DocumentMetadata) -> None:
+        try:
+            from dataclasses import asdict
+            data = asdict(metadata)
+            self.client.set(self.metadata_key, json.dumps(data), ex=REDIS_SESSION_TTL)
+            log.info(f"Saved document metadata for session {self.session_id}")
+        except redis.RedisError as e:
+            log.error(f"Redis write failed for metadata in session {self.session_id}: {str(e)}")
+
+    def get_metadata(self) -> DocumentMetadata | None:
+        try:
+            raw_data = self.client.get(self.metadata_key)
+            if not raw_data:
+                return None
+            data = json.loads(raw_data)
+            return DocumentMetadata(**data)
+        except redis.RedisError as e:
+            log.error(f"Redis read failed for metadata in session {self.session_id}: {str(e)}")
+            return None
 
     def get_history(self) -> List[Dict[str, str]]:
         """
