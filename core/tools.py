@@ -40,9 +40,9 @@ def _count_word(word: str, full_text: str) -> int:
     return len(matches)
 
 
-def _get_page_count(full_text: str, page_boundaries: List[int]) -> int:
-    """Returns total number of pages."""
-    return len(page_boundaries)
+def _get_page_count(page_count: int) -> int:
+    """Returns total number of pages from the document metadata."""
+    return page_count
 
 
 def _get_page_content(page_num: int, full_text: str, page_boundaries: List[int]) -> str:
@@ -144,7 +144,9 @@ class ToolExecutor:
         # Inject metadata
         if tool_name in ["count_word"]:
             kwargs["full_text"] = self.metadata.full_text
-        elif tool_name in ["get_page_count", "get_page_content", "find_all_occurrences"]:
+        elif tool_name == "get_page_count":
+            kwargs["page_count"] = self.metadata.page_count
+        elif tool_name in ["get_page_content", "find_all_occurrences"]:
             kwargs["full_text"] = self.metadata.full_text
             kwargs["page_boundaries"] = self.metadata.page_boundaries
             

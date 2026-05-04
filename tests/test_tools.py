@@ -18,7 +18,7 @@ class TestTools(unittest.TestCase):
         self.assertEqual(_count_word("banana", self.full_text), 0)
 
     def test_get_page_count(self):
-        self.assertEqual(_get_page_count(self.full_text, self.page_boundaries), 3)
+        self.assertEqual(_get_page_count(3), 3)
 
     def test_get_page_content(self):
         # bounds: 0, 50, 100
