@@ -219,7 +219,7 @@ def chat_inference(user_message, chat_history, session_id):
 # Gradio UI Layout
 # =====================================================================
 
-with gr.Blocks(title="PDF-Constrained Agent") as demo:
+with gr.Blocks(title="PDF-Constrained Agent", theme=gr.themes.Soft()) as demo:
     # A hidden state variable to hold the unique Session ID for this browser tab
     session_id_state = gr.State(lambda: str(uuid.uuid4()))
     
@@ -240,7 +240,7 @@ with gr.Blocks(title="PDF-Constrained Agent") as demo:
             # Right panel: Chat interface
             # Gradio 6+ removed the `type` parameter entirely — messages dict format
             # {"role": "user"/"assistant", "content": "..."} is now the only format.
-            chatbot = gr.Chatbot(label="Conversation", height=600)
+            chatbot = gr.Chatbot(label="Conversation", height=600, type="messages")
             msg_input = gr.Textbox(
                 label="Ask a question about the document",
                 placeholder="Type your question and press Enter...",
@@ -286,6 +286,5 @@ with gr.Blocks(title="PDF-Constrained Agent") as demo:
 if __name__ == "__main__":
     log.info("Starting Gradio server...")
     # launch() starts the local web server.
-    # theme is passed here as per Gradio 6.0+ API.
     # share=False keeps it local. Set True to generate a public link.
-    demo.launch(server_name="0.0.0.0", share=False, theme=gr.themes.Soft())
+    demo.launch(server_name="0.0.0.0", share=False)
