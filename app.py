@@ -37,6 +37,47 @@ from utils.logger import get_logger
 
 log = get_logger(__name__)
 
+
+# =====================================================================
+# UI Transform Helpers
+# =====================================================================
+
+def transform_thinking_tags(text: str) -> str:
+    """
+    Converts raw <thinking>...</thinking> tags in streamed LLM output into
+    a Gradio-renderable HTML <details> accordion. This allows the user to
+    watch the agent's reasoning stream live and collapse it afterwards.
+
+    Safe for partial/streaming text: if a tag is only partially received
+    (e.g. the stream ends mid-tag like "<thinki" or "</thinking"),
+    the function returns the text unchanged to prevent broken HTML.
+    """
+    # Guard: closing tag partially streamed — check ALL partial prefixes
+    # (e.g. "</thinki", "</thinking", etc.) before any replacement runs.
+    _CLOSING = "</thinking>"
+    if any(_CLOSING[:i] in text for i in range(2, len(_CLOSING))) and _CLOSING not in text:
+        return text
+    # Guard: opening tag partially streamed (e.g. "<thinki" or "<thinking" without ">")
+    if "<thinking" in text and "<thinking>" not in text:
+        return text
+    text = text.replace(
+        "<thinking>",
+        "<details open>\n<summary>🧠 Agent Thinking...</summary>\n\n"
+    )
+    text = text.replace("</thinking>", "\n</details>\n\n")
+    return text
+
+
+def strip_thinking(text: str) -> str:
+    """
+    Strips <thinking>...</thinking> blocks from the final LLM response
+    before saving to Redis conversation memory. This prevents the model
+    from seeing its own reasoning in future turns, which bloats the
+    context window and can confuse subsequent responses.
+    """
+    import re
+    return re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL).strip()
+
 # =====================================================================
 # Global Backend Components (Initialised once on startup)
 # =====================================================================
@@ -194,9 +235,17 @@ def chat_inference(user_message, chat_history, session_id):
         tool_executor=tool_executor,
         verified_fact=verified_fact
     )
-    
+
     first_chunk_received = False
-    
+
+    # Expected on-screen sequence for a tool-using query:
+    # Step 1: User sends message
+    # Step 2: "🔧 Running tool: ..." appears (existing tool status)
+    # Step 3: Tool status is REPLACED (not appended) by empty string before final answer
+    # Step 4: 🧠 Agent Thinking accordion appears, expanded, streaming reasoning
+    # Step 5: </thinking> closes the accordion section
+    # Step 6: Final answer text streams below the accordion
+    # Step 7: Stream ends — user can click to collapse the accordion
     for chunk in response_stream:
         if isinstance(chunk, dict) and chunk.get("type") == "tool_status":
             chat_history[-1]["content"] = f"🔧 Running tool: {chunk['name']}..."
@@ -205,14 +254,16 @@ def chat_inference(user_message, chat_history, session_id):
             if not first_chunk_received:
                 chat_history[-1]["content"] = ""  # Explicitly clear "Running tool" preamble
                 first_chunk_received = True
-                
+
             partial_response += chunk
-            chat_history[-1]["content"] = partial_response
+            # Only transform a display copy — keep partial_response raw for memory storage
+            chat_history[-1]["content"] = transform_thinking_tags(partial_response)
             yield chat_history
-        
+
     # 6. Save Turn to Memory (Post-Generation)
-    # Once the stream finishes, we save the full exchange to Redis
-    memory.save_turn(user_message, partial_response)
+    # Strip <thinking> blocks before persisting so the LLM does not see its
+    # own reasoning in future turns (reduces context bloat and confusion).
+    memory.save_turn(user_message, strip_thinking(partial_response))
 
 
 # =====================================================================
